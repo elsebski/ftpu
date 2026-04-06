@@ -1,0 +1,172 @@
+{
+    "name": "ftpu",
+    "displayName": "FTPU — FTP Upload",
+    "description": "Lightweight SFTP/FTP file uploader for VS Code. Upload on save, modified files panel, folder upload.",
+    "version": "0.4.0-rc.1",
+    "license": "MIT",
+    "publisher": "ftpu",
+    "author": "elsebski",
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/elsebski/ftpu"
+    },
+    "engines": {
+        "vscode": "^1.85.0"
+    },
+    "categories": [
+        "Other"
+    ],
+    "keywords": [
+        "sftp",
+        "ftp",
+        "upload",
+        "deploy",
+        "remote"
+    ],
+    "activationEvents": [
+        "workspaceContains:.vscode/ftpu.json"
+    ],
+    "icon": "icon.png",
+    "main": "./out/extension.js",
+    "contributes": {
+        "commands": [
+            {
+                "command": "ftpu.uploadCurrentFile",
+                "title": "FTPU: Upload Current File"
+            },
+            {
+                "command": "ftpu.uploadFile",
+                "title": "FTPU: Upload",
+                "icon": "$(cloud-upload)"
+            },
+            {
+                "command": "ftpu.uploadAllModified",
+                "title": "FTPU: Upload All Modified",
+                "icon": "$(cloud-upload)"
+            },
+            {
+                "command": "ftpu.clearModified",
+                "title": "FTPU: Clear Modified List",
+                "icon": "$(clear-all)"
+            },
+            {
+                "command": "ftpu.refreshModified",
+                "title": "FTPU: Refresh",
+                "icon": "$(refresh)"
+            },
+            {
+                "command": "ftpu.toggleUploadOnSave",
+                "title": "FTPU: Toggle Upload on Save"
+            },
+            {
+                "command": "ftpu.connect",
+                "title": "FTPU: Connect"
+            },
+            {
+                "command": "ftpu.disconnect",
+                "title": "FTPU: Disconnect"
+            },
+            {
+                "command": "ftpu.uploadExplorerFile",
+                "title": "FTPU: Upload",
+                "icon": "$(cloud-upload)"
+            },
+            {
+                "command": "ftpu.uploadExplorerFolder",
+                "title": "FTPU: Upload Folder",
+                "icon": "$(cloud-upload)"
+            },
+            {
+                "command": "ftpu.configure",
+                "title": "FTPU: Configure"
+            },
+            {
+                "command": "ftpu.revealInFinder",
+                "title": "Reveal in File Explorer"
+            }
+        ],
+        "views": {
+            "explorer": [
+                {
+                    "id": "ftpuModifiedFiles",
+                    "name": "FTPU: Modified Files",
+                    "icon": "$(cloud-upload)",
+                    "when": "ftpu.active"
+                }
+            ]
+        },
+        "menus": {
+            "view/title": [
+                {
+                    "command": "ftpu.uploadAllModified",
+                    "when": "view == ftpuModifiedFiles",
+                    "group": "navigation@1"
+                },
+                {
+                    "command": "ftpu.refreshModified",
+                    "when": "view == ftpuModifiedFiles",
+                    "group": "navigation@2"
+                },
+                {
+                    "command": "ftpu.clearModified",
+                    "when": "view == ftpuModifiedFiles",
+                    "group": "navigation@3"
+                }
+            ],
+            "view/item/context": [
+                {
+                    "command": "ftpu.uploadFile",
+                    "when": "view == ftpuModifiedFiles && viewItem =~ /pending|failed/",
+                    "group": "inline"
+                },
+                {
+                    "command": "ftpu.uploadFile",
+                    "when": "view == ftpuModifiedFiles && viewItem =~ /pending|failed/",
+                    "group": "1_upload@1"
+                },
+                {
+                    "command": "ftpu.uploadAllModified",
+                    "when": "view == ftpuModifiedFiles",
+                    "group": "1_upload@2"
+                },
+                {
+                    "command": "ftpu.revealInFinder",
+                    "when": "view == ftpuModifiedFiles",
+                    "group": "2_navigation@1"
+                }
+            ],
+            "explorer/context": [
+                {
+                    "command": "ftpu.uploadExplorerFile",
+                    "when": "ftpu.active && !explorerResourceIsFolder",
+                    "group": "ftpu@1"
+                },
+                {
+                    "command": "ftpu.uploadExplorerFolder",
+                    "when": "ftpu.active && explorerResourceIsFolder",
+                    "group": "ftpu@1"
+                }
+            ]
+        }
+    },
+    "scripts": {
+        "clean": "rm -rf out",
+        "compile": "npm run clean && node esbuild.mjs --production",
+        "watch": "node esbuild.mjs --watch",
+        "typecheck": "tsc -p ./ --noEmit",
+        "vscode:prepublish": "npm run compile",
+        "package": "npx @vscode/vsce package --no-dependencies"
+    },
+    "devDependencies": {
+        "@types/node": "^20.11.0",
+        "@types/ssh2": "^1.15.0",
+        "@types/vscode": "^1.85.0",
+        "esbuild": "^0.28.0",
+        "ftp-srv": "^4.6.3",
+        "typescript": "^5.3.0"
+    },
+    "dependencies": {
+        "basic-ftp": "^5.2.0",
+        "ssh2": "^1.16.0"
+    }
+}

@@ -1,0 +1,25 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "watch",
+            "type": "shell",
+            "command": "node esbuild.mjs --watch",
+            "isBackground": true,
+            "problemMatcher": ["$tsc-watch"],
+            "group": { "kind": "build", "isDefault": true }
+        },
+        {
+            "label": "build",
+            "type": "shell",
+            "command": "node esbuild.mjs --production",
+            "group": "build"
+        },
+        {
+            "label": "typecheck",
+            "type": "shell",
+            "command": "npm run typecheck",
+            "group": "build"
+        }
+    ]
+}
