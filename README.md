@@ -1,4 +1,4 @@
-# FTPU — FTP Upload for VS Code
+<h1><img src="icon.png" width="32" height="32" alt="FTPU icon" style="vertical-align: middle;"> FTPU — FTP Upload for VS Code</h1>
 
 A lightweight, focused SFTP/FTP uploader for VS Code. FTPU tracks every file you change and gives you full control over what gets uploaded and when — no syncing, no downloading, no clutter.
 
