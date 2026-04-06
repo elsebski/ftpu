@@ -147,7 +147,7 @@ export class FileWatcher {
         ).then(choice => {
             if (choice === 'More Info') {
                 vscode.window.showInformationMessage(
-                    'macOS has a limited number of file watchers. When too many apps hold open files, ' +
+                    'Your OS has a limited number of file watchers. When too many apps hold open files, ' +
                     'the OS stops delivering file change events. This affects your editor\'s file explorer ' +
                     'and extensions that watch for changes. A reboot clears all open file handles.'
                 );
