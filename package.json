@@ -2,7 +2,7 @@
     "name": "ftpu",
     "displayName": "FTPU — FTP Upload",
     "description": "Lightweight SFTP/FTP file uploader for VS Code. Upload on save, modified files panel, folder upload.",
-    "version": "0.4.0-rc.1",
+    "version": "0.4.2",
     "license": "MIT",
     "publisher": "ftpu",
     "author": "elsebski",
@@ -83,6 +83,15 @@
             {
                 "command": "ftpu.revealInFinder",
                 "title": "Reveal in File Explorer"
+            },
+            {
+                "command": "ftpu.removeFromList",
+                "title": "Remove from Upload List",
+                "icon": "$(close)"
+            },
+            {
+                "command": "ftpu.showLog",
+                "title": "FTPU: Show Log"
             }
         ],
         "views": {
@@ -128,6 +137,11 @@
                     "command": "ftpu.uploadAllModified",
                     "when": "view == ftpuModifiedFiles",
                     "group": "1_upload@2"
+                },
+                {
+                    "command": "ftpu.removeFromList",
+                    "when": "view == ftpuModifiedFiles && viewItem =~ /pending|failed/",
+                    "group": "3_manage@1"
                 },
                 {
                     "command": "ftpu.revealInFinder",

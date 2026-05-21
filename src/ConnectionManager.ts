@@ -104,7 +104,7 @@ export class ConnectionManager {
             });
         });
 
-        this.remote = new SftpClient(sftp);
+        this.remote = new SftpClient(sftp, this.sshClient!);
 
         this.sshClient.on('error', () => this.handleDisconnect(true));
         this.sshClient.on('end', () => this.handleDisconnect(true));

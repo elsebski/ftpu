@@ -24,21 +24,28 @@ export class FileWatcher {
     readonly onDidChange = this._onDidChange.event;
     private saveListener: vscode.Disposable;
     private fsWatcher: vscode.FileSystemWatcher | null = null;
+    private nodeWatcher: fs.FSWatcher | null = null;
     private fsHealthy = true;
     private readonly _onHealthCheck = new vscode.EventEmitter<boolean>();
     readonly onHealthCheck = this._onHealthCheck.event;
     private saveTimer: ReturnType<typeof setTimeout> | null = null;
+    private log: vscode.OutputChannel;
 
     constructor(
         private workspaceRoot: string,
         private ignorePatterns: string[],
-        private storage: vscode.Memento
+        private storage: vscode.Memento,
+        log: vscode.OutputChannel
     ) {
+        this.log = log;
+        this.log.appendLine(`[FileWatcher] init root=${workspaceRoot}`);
+
         // Restore persisted files
         this.restoreState();
 
         // Editor save events
         this.saveListener = vscode.workspace.onDidSaveTextDocument((doc) => {
+            this.log.appendLine(`[save] ${doc.uri.fsPath}`);
             this.trackFile(doc.uri.fsPath);
         });
 
@@ -46,11 +53,49 @@ export class FileWatcher {
         this.fsWatcher = vscode.workspace.createFileSystemWatcher(
             new vscode.RelativePattern(workspaceRoot, '**/*')
         );
-        this.fsWatcher.onDidCreate((uri) => this.trackFile(uri.fsPath));
-        this.fsWatcher.onDidChange((uri) => this.trackFile(uri.fsPath));
+        this.fsWatcher.onDidCreate((uri) => {
+            this.log.appendLine(`[vscode-fs:create] ${uri.fsPath}`);
+            this.trackFile(uri.fsPath);
+        });
+        this.fsWatcher.onDidChange((uri) => {
+            this.log.appendLine(`[vscode-fs:change] ${uri.fsPath}`);
+            this.trackFile(uri.fsPath);
+        });
+
+        // Node-level recursive watcher — backup for VSCode's watcher, which is
+        // unreliable on some platforms when files are mutated by external
+        // processes (CLIs, AI agents, build tools). On macOS this uses FSEvents
+        // and is rock-solid; on Windows it uses ReadDirectoryChangesW. Linux
+        // does not support {recursive:true} natively (Node ≥20 polyfills it via
+        // chokidar-style walking on older versions; from Node 20+ it works).
+        this.setupNodeWatcher();
 
         // Check if OS file watching is functional
         this.checkFileWatcherHealth();
+    }
+
+    private setupNodeWatcher(): void {
+        try {
+            this.nodeWatcher = fs.watch(
+                this.workspaceRoot,
+                { recursive: true, persistent: false },
+                (eventType, filename) => {
+                    if (!filename) { return; }
+                    const abs = path.join(this.workspaceRoot, filename.toString());
+                    this.log.appendLine(`[node-fs:${eventType}] ${abs}`);
+                    this.trackFile(abs);
+                }
+            );
+            this.nodeWatcher.on('error', (err) => {
+                this.log.appendLine(`[node-fs:error] ${err.message}`);
+            });
+            this.log.appendLine(`[FileWatcher] node fs.watch (recursive) attached`);
+        } catch (err) {
+            this.log.appendLine(
+                `[FileWatcher] node fs.watch failed: ${(err as Error).message} ` +
+                `(falling back to VSCode watcher only)`
+            );
+        }
     }
 
     private restoreState(): void {
@@ -156,24 +201,46 @@ export class FileWatcher {
     }
 
     trackFile(absolutePath: string): void {
+        // Only track regular files, not directories
+        try {
+            if (!fs.statSync(absolutePath).isFile()) {
+                this.log.appendLine(`  └─ skip: not a regular file`);
+                return;
+            }
+        } catch {
+            this.log.appendLine(`  └─ skip: stat failed (file deleted?)`);
+            return;
+        }
+
         const rel = path.relative(this.workspaceRoot, absolutePath);
-        if (rel.startsWith('..') || path.isAbsolute(rel)) { return; }
+        if (rel.startsWith('..') || path.isAbsolute(rel)) {
+            this.log.appendLine(`  └─ skip: outside workspaceRoot (rel=${rel})`);
+            return;
+        }
 
         const segments = rel.split(path.sep);
 
         // Always exclude .git internals regardless of config
-        if (segments[0] === '.git') { return; }
+        if (segments[0] === '.git') {
+            this.log.appendLine(`  └─ skip: .git internal`);
+            return;
+        }
 
         for (const pattern of this.ignorePatterns) {
             if (minimatch(rel, pattern) || segments.some(s => minimatch(s, pattern))) {
+                this.log.appendLine(`  └─ skip: matches ignore pattern "${pattern}"`);
                 return;
             }
         }
 
         const existing = this.files.get(absolutePath);
-        if (existing?.state === 'uploaded' || existing?.state === 'uploading') { return; }
+        if (existing?.state === 'uploaded' || existing?.state === 'uploading') {
+            this.log.appendLine(`  └─ skip: state=${existing.state} (still in cooldown)`);
+            return;
+        }
 
         this.files.set(absolutePath, { absolutePath, relativePath: rel, state: 'pending' });
+        this.log.appendLine(`  └─ tracked: ${rel} (total=${this.files.size})`);
         this._onDidChange.fire();
         this.persistState();
     }
@@ -221,11 +288,30 @@ export class FileWatcher {
 
     updateIgnorePatterns(patterns: string[]): void {
         this.ignorePatterns = patterns;
+        this.refilter();
+    }
+
+    refilter(): void {
+        let changed = false;
+        for (const [abs, file] of this.files) {
+            const segments = file.relativePath.split(path.sep);
+            if (segments[0] === '.git') { this.files.delete(abs); changed = true; continue; }
+            for (const pattern of this.ignorePatterns) {
+                if (minimatch(file.relativePath, pattern) || segments.some(s => minimatch(s, pattern))) {
+                    this.files.delete(abs); changed = true; break;
+                }
+            }
+        }
+        if (changed) {
+            this._onDidChange.fire();
+            this.persistState();
+        }
     }
 
     dispose(): void {
         this.saveListener.dispose();
         this.fsWatcher?.dispose();
+        try { this.nodeWatcher?.close(); } catch {}
         if (this.saveTimer) { clearTimeout(this.saveTimer); }
         this._onDidChange.dispose();
         this._onHealthCheck.dispose();

@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
+import * as fs from 'fs';
 import { ConfigLoader } from './ConfigLoader';
 import { ConnectionManager } from './ConnectionManager';
 import { Uploader } from './Uploader';
@@ -14,16 +15,37 @@ let uploader: Uploader;
 let statusBar: StatusBarManager;
 let fileWatcher: FileWatcher;
 let modifiedFilesProvider: ModifiedFilesProvider;
+let log: vscode.OutputChannel;
 let uploadOnSave = false;
 let initialized = false;
 
 export async function activate(context: vscode.ExtensionContext) {
-    const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
-    if (!workspaceFolder) {
+    log = vscode.window.createOutputChannel('FTPU');
+    log.appendLine(`[activate] FTPU starting`);
+
+    // Locate the workspace folder that actually owns .vscode/ftpu.json.
+    // In a multi-root workspace, folder[0] is not necessarily the one with
+    // the config — fall back to scanning every folder. This was the silent
+    // failure on multi-root setups: the watcher would attach to folder[0]
+    // (e.g. a parent site) while the config lived in folder[2] (a plugin).
+    const folders = vscode.workspace.workspaceFolders ?? [];
+    if (folders.length === 0) {
+        log.appendLine(`[activate] no workspace folders — bailing`);
         return;
     }
-
+    let workspaceFolder = folders[0];
+    for (const f of folders) {
+        try {
+            if (fs.existsSync(path.join(f.uri.fsPath, '.vscode', 'ftpu.json'))) {
+                workspaceFolder = f;
+                log.appendLine(`[activate] config found in folder "${f.name}"`);
+                break;
+            }
+        } catch {}
+    }
     const workspaceRoot = workspaceFolder.uri.fsPath;
+    log.appendLine(`[activate] workspaceRoot=${workspaceRoot} (folder "${workspaceFolder.name}")`);
+    log.appendLine(`[activate] workspace folders: ${folders.map(f => f.name).join(', ')}`);
 
     // Always create these — they work without config
     const configPanel = new ConfigPanel(workspaceRoot);
@@ -31,7 +53,7 @@ export async function activate(context: vscode.ExtensionContext) {
     connectionManager = new ConnectionManager();
     uploader = new Uploader(connectionManager, workspaceRoot);
     statusBar = new StatusBarManager();
-    fileWatcher = new FileWatcher(workspaceRoot, [], context.workspaceState);
+    fileWatcher = new FileWatcher(workspaceRoot, [], context.workspaceState, log);
     modifiedFilesProvider = new ModifiedFilesProvider(fileWatcher);
 
     // Register tree view
@@ -41,13 +63,15 @@ export async function activate(context: vscode.ExtensionContext) {
 
     context.subscriptions.push(
         configLoader, connectionManager, uploader, statusBar,
-        fileWatcher, modifiedFilesProvider, treeView,
+        fileWatcher, modifiedFilesProvider, treeView, log,
         { dispose: () => configPanel.dispose() }
     );
 
     // Register ALL commands upfront — they check `initialized` internally
     context.subscriptions.push(
         vscode.commands.registerCommand('ftpu.configure', () => configPanel.show()),
+
+        vscode.commands.registerCommand('ftpu.showLog', () => log.show()),
 
         vscode.commands.registerCommand('ftpu.uploadCurrentFile', async () => {
             if (!requireConfig()) { return; }
@@ -101,7 +125,14 @@ export async function activate(context: vscode.ExtensionContext) {
         }),
 
         vscode.commands.registerCommand('ftpu.refreshModified', () => {
+            fileWatcher.refilter();
             modifiedFilesProvider.refresh();
+        }),
+
+        vscode.commands.registerCommand('ftpu.removeFromList', (item: ModifiedFileItem) => {
+            if (item?.absolutePath) {
+                fileWatcher.remove(item.absolutePath);
+            }
         }),
 
         vscode.commands.registerCommand('ftpu.toggleUploadOnSave', () => {
