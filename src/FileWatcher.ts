@@ -61,6 +61,10 @@ export class FileWatcher {
             this.log.appendLine(`[vscode-fs:change] ${uri.fsPath}`);
             this.trackFile(uri.fsPath);
         });
+        this.fsWatcher.onDidDelete((uri) => {
+            this.log.appendLine(`[vscode-fs:delete] ${uri.fsPath}`);
+            this.handleDelete(uri.fsPath);
+        });
 
         // Node-level recursive watcher — backup for VSCode's watcher, which is
         // unreliable on some platforms when files are mutated by external
@@ -83,7 +87,14 @@ export class FileWatcher {
                     if (!filename) { return; }
                     const abs = path.join(this.workspaceRoot, filename.toString());
                     this.log.appendLine(`[node-fs:${eventType}] ${abs}`);
-                    this.trackFile(abs);
+                    // fs.watch can't distinguish create/delete on its own —
+                    // a 'rename' event fires for both, with no payload telling
+                    // us which. Probe the filesystem to decide.
+                    if (!fs.existsSync(abs)) {
+                        this.handleDelete(abs);
+                    } else {
+                        this.trackFile(abs);
+                    }
                 }
             );
             this.nodeWatcher.on('error', (err) => {
@@ -241,6 +252,23 @@ export class FileWatcher {
 
         this.files.set(absolutePath, { absolutePath, relativePath: rel, state: 'pending' });
         this.log.appendLine(`  └─ tracked: ${rel} (total=${this.files.size})`);
+        this._onDidChange.fire();
+        this.persistState();
+    }
+
+    private handleDelete(absolutePath: string): void {
+        const existing = this.files.get(absolutePath);
+        if (!existing) {
+            this.log.appendLine(`  └─ delete: not tracked, ignoring`);
+            return;
+        }
+        // Don't yank entries mid-upload — let the upload finish first.
+        if (existing.state === 'uploading') {
+            this.log.appendLine(`  └─ delete: state=uploading, keeping (will clear after upload)`);
+            return;
+        }
+        this.files.delete(absolutePath);
+        this.log.appendLine(`  └─ untracked (deleted from disk, total=${this.files.size})`);
         this._onDidChange.fire();
         this.persistState();
     }

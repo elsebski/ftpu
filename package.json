@@ -2,7 +2,7 @@
     "name": "ftpu",
     "displayName": "FTPU — FTP Upload",
     "description": "Lightweight SFTP/FTP file uploader for VS Code. Upload on save, modified files panel, folder upload.",
-    "version": "0.4.2",
+    "version": "0.4.3",
     "license": "MIT",
     "publisher": "ftpu",
     "author": "elsebski",
